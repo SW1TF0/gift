@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>For You</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1a 100%);
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            padding: 20px;
+        }
+
+        .envelope {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            background: linear-gradient(145deg, #161625, #0a0a0f);
+            padding: 60px 40px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 
+                        inset 0 0 100px rgba(255, 215, 0, 0.05);
+            text-align: center;
+            animation: slideUp 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .envelope::before {
+            content: "";
+            position: absolute;
+            top: 10px; left: 10px; right: 10px; bottom: 10px;
+            border: 1px solid rgba(255, 215, 0, 0.15);
+            pointer-events: none;
+        }
+
+        h1 {
+            font-family: 'Playfair Display', serif;
+            color: #d4af37; /* Златно */
+            font-size: 2rem;
+            margin-bottom: 30px;
+            letter-spacing: 2px;
+            font-style: italic;
+        }
+
+        p {
+            font-size: 1.3rem;
+            line-height: 1.8;
+            color: #e0e0e0;
+            font-weight: 300;
+        }
+
+        .highlight {
+            display: block;
+            margin: 20px 0;
+            font-size: 1.5rem;
+            color: #ffffff;
+            font-weight: 400;
+            border-top: 1px solid #333;
+            border-bottom: 1px solid #333;
+            padding: 20px 0;
+        }
+
+        .footer {
+            margin-top: 30px;
+            font-size: 0.9rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(50px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Адаптация за мобилни устройства */
+        @media (max-width: 480px) {
+            .envelope {
+                padding: 40px 20px;
+            }
+            h1 { font-size: 1.5rem; }
+            p { font-size: 1.1rem; }
+            .highlight { font-size: 1.25rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="envelope">
+        <h1>A message for you</h1>
+        <p>
+            I’m not one for long speeches, but I need you to know this: 
+            <span class="highlight">"You are the exception to every rule in my life."</span>
+            Having you by my side isn't just something I appreciate; it's something I value more than anything else. Thank you for choosing to be my partner in everything. I honestly don't know what I'd do without you.
+        </p>
+        <div class="footer">With Love from Krasimir!</div>
+    </div>
+
+</body>
+</html>
