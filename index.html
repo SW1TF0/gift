@@ -4,105 +4,498 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>For You</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400&display=swap');
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, push, onValue, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
+        // ТВОЕТО CLOUD NAME Е ВЪВЕДЕНО
+        const CLOUDINARY_CLOUD_NAME = "dbaidwws4"; 
+        const CLOUDINARY_UPLOAD_PRESET = "my_preset"; // Това е пресетът, който създаде
+
+        // Firebase Конфигурация
+        const firebaseConfig = {
+            apiKey: "AIzaSyAhgErcuuiVkMjiECyZZRoWf10YaGwZmEQ",
+            authDomain: "gift-529fb.firebaseapp.com",
+            databaseURL: "https://gift-529fb-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "gift-529fb",
+            storageBucket: "gift-529fb.firebasestorage.app",
+            messagingSenderId: "253814323089",
+            appId: "1:253814323089:web:af9adb6b0379203755cc30"
+        };
+
+        const ADMIN_PASSWORD = "0405";
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // --- УПРАВЛЕНИЕ НА МОДАЛНИ ПРОЗОРЦИ И ИЗВЕСТИЯ ---
+        const showModal = (type, title, message = '') => {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('modal-overlay');
+                const modalTitle = document.getElementById('modal-title');
+                const modalMessage = document.getElementById('modal-message');
+                const modalInput = document.getElementById('modal-input');
+                const btnOk = document.getElementById('btn-ok');
+                const btnCancel = document.getElementById('btn-cancel');
+                const loader = document.getElementById('modal-loader');
+
+                // Рестартиране на състоянията
+                modalInput.classList.add('hidden');
+                btnCancel.classList.add('hidden');
+                loader.classList.add('hidden');
+                modalMessage.classList.remove('hidden');
+                btnOk.classList.remove('hidden');
+                modalInput.value = '';
+
+                modalTitle.innerText = title;
+                modalMessage.innerText = message;
+
+                if (type === 'prompt') {
+                    modalInput.classList.remove('hidden');
+                    setTimeout(() => modalInput.focus(), 100);
+                } else if (type === 'confirm') {
+                    btnCancel.classList.remove('hidden');
+                } else if (type === 'loader') {
+                    modalMessage.classList.add('hidden');
+                    loader.classList.remove('hidden');
+                    btnOk.classList.add('hidden'); 
+                }
+
+                overlay.classList.add('active');
+
+                // Почистване на стари event listeners
+                const newBtnOk = btnOk.cloneNode(true);
+                const newBtnCancel = btnCancel.cloneNode(true);
+                btnOk.parentNode.replaceChild(newBtnOk, btnOk);
+                btnCancel.parentNode.replaceChild(newBtnCancel, btnCancel);
+
+                const closeAndResolve = (val) => {
+                    overlay.classList.remove('active');
+                    resolve(val);
+                };
+
+                newBtnOk.addEventListener('click', () => {
+                    if (type === 'prompt') closeAndResolve(modalInput.value);
+                    else closeAndResolve(true);
+                });
+
+                newBtnCancel.addEventListener('click', () => {
+                    closeAndResolve(false);
+                });
+            });
+        };
+
+        const hideModal = () => {
+            document.getElementById('modal-overlay').classList.remove('active');
+        };
+
+        const showToast = (msg, isError = false) => {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${isError ? 'error' : ''}`;
+            toast.innerText = msg;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        };
+
+        const checkPassword = async () => {
+            const pass = await showModal('prompt', 'Изисква се достъп', 'Въведи администраторска парола:');
+            return pass === ADMIN_PASSWORD;
+        };
+
+        // --- ФУНКЦИЯ ЗА КАЧВАНЕ ---
+        window.uploadMemory = async () => {
+            const isAuth = await checkPassword();
+            if (!isAuth) {
+                showToast("Грешна парола или отказан достъп!", true);
+                return;
+            }
+
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                showToast("Моля, избери файл.", true);
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+
+            try {
+                showModal('loader', 'Обработка...', 'Качването започна, моля изчакай малко...');
+                
+                // 1. Качване към Cloudinary
+                const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
+                    method: "POST",
+                    body: formData
+                });
+                
+                const data = await res.json();
+                if (!data.secure_url) throw new Error("Грешка при качване в Cloudinary: " + JSON.stringify(data));
+
+                // 2. Записване на линка във Firebase
+                await push(ref(db, 'memories'), { 
+                    url: data.secure_url, 
+                    type: file.type,
+                    timestamp: Date.now()
+                });
+                
+                hideModal();
+                showToast("Споменът е успешно добавен!");
+                fileInput.value = "";
+                document.getElementById('file-name').innerText = "Няма избран файл";
+            } catch (error) {
+                hideModal();
+                console.error(error);
+                showToast("Възникна грешка при качването.", true);
+            }
+        };
+
+        // --- ТРИЕНЕ ---
+        window.deleteMemory = async (id) => {
+            const isAuth = await checkPassword();
+            if (!isAuth) {
+                showToast("Грешна парола или отказан достъп!", true);
+                return;
+            }
+
+            const isConfirmed = await showModal('confirm', 'Потвърждение', 'Сигурен ли си, че искаш да изтриеш този спомен?');
+            if (isConfirmed) {
+                await remove(ref(db, 'memories/' + id));
+                showToast("Споменът е изтрит успешно.");
+            }
+        };
+
+        // Обновяване на името на файла при избор
+        window.updateFileName = function() {
+            const fileInput = document.getElementById('fileInput');
+            const fileNameDisplay = document.getElementById('file-name');
+            if (fileInput.files.length > 0) {
+                fileNameDisplay.innerText = fileInput.files[0].name;
+            } else {
+                fileNameDisplay.innerText = "Няма избран файл";
+            }
+        };
+
+        // --- ЗАРЕЖДАНЕ ---
+        onValue(ref(db, 'memories'), (snapshot) => {
+            const container = document.getElementById('gallery');
+            container.innerHTML = '';
+            const data = snapshot.val();
+            
+            if (data) {
+                // Сортиране по време (най-новите първи)
+                const items = Object.entries(data).reverse();
+                items.forEach(([id, value]) => {
+                    const isVideo = value.type && value.type.startsWith('video');
+                    const mediaElement = isVideo 
+                        ? `<video src="${value.url}" controls></video>` 
+                        : `<img src="${value.url}" alt="Memory" loading="lazy">`;
+
+                    container.innerHTML += `
+                        <div class="photo-card">
+                            ${mediaElement}
+                            <button class="delete-btn" onclick="deleteMemory('${id}')">×</button>
+                        </div>
+                    `;
+                });
+            } else {
+                container.innerHTML = '<p style="grid-column: 1 / -1; color: #888; font-style: italic;">Все още няма добавени спомени.</p>';
+            }
+        });
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;600&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            height: 100vh;
+            min-height: 100vh;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
+            justify-content: flex-start;
             align-items: center;
             background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1a 100%);
             font-family: 'Inter', sans-serif;
-            overflow: hidden;
-            padding: 20px;
+            color: #e0e0e0;
+            padding: 40px 20px;
         }
 
         .envelope {
-            position: relative;
             width: 100%;
             max-width: 600px;
             background: linear-gradient(145deg, #161625, #0a0a0f);
-            padding: 60px 40px;
-            border-radius: 4px;
-            border: 1px solid rgba(255, 215, 0, 0.2);
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 
-                        inset 0 0 100px rgba(255, 215, 0, 0.05);
+            padding: 50px 30px;
+            border-radius: 8px;
+            border: 1px solid rgba(212, 175, 55, 0.3);
             text-align: center;
-            animation: slideUp 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+            margin-bottom: 50px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
 
-        .envelope::before {
-            content: "";
-            position: absolute;
-            top: 10px; left: 10px; right: 10px; bottom: 10px;
-            border: 1px solid rgba(255, 215, 0, 0.15);
-            pointer-events: none;
-        }
-
-        h1 {
+        h1 { font-family: 'Playfair Display', serif; color: #d4af37; margin-bottom: 25px; font-style: italic; font-size: 2.2rem; }
+        .envelope p { line-height: 1.6; font-size: 1.05rem; }
+        
+        .highlight { 
+            display: block; 
+            margin: 25px 0; 
+            font-size: 1.4rem; 
+            color: #ffffff; 
+            border-top: 1px solid rgba(212, 175, 55, 0.2); 
+            border-bottom: 1px solid rgba(212, 175, 55, 0.2); 
+            padding: 20px 0; 
             font-family: 'Playfair Display', serif;
-            color: #d4af37; /* Златно */
-            font-size: 2rem;
-            margin-bottom: 30px;
-            letter-spacing: 2px;
             font-style: italic;
         }
 
-        p {
-            font-size: 1.3rem;
-            line-height: 1.8;
-            color: #e0e0e0;
-            font-weight: 300;
+        .memories-section { max-width: 900px; width: 100%; text-align: center; }
+        .memories-section h2 { font-size: 2rem; font-family: 'Playfair Display', serif; margin-bottom: 20px; }
+        
+        .gallery { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); 
+            gap: 20px; 
+            margin-top: 20px; 
+        }
+        
+        .photo-card { 
+            position: relative; 
+            border-radius: 10px; 
+            overflow: hidden; 
+            border: 1px solid rgba(212,175,55,0.15); 
+            background: #000; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: transform 0.3s ease;
+        }
+        
+        .photo-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(212,175,55,0.4);
         }
 
-        .highlight {
-            display: block;
-            margin: 20px 0;
-            font-size: 1.5rem;
-            color: #ffffff;
+        .photo-card img, .photo-card video { width: 100%; height: 200px; object-fit: cover; display: block; }
+        
+        .delete-btn { 
+            position: absolute; 
+            top: 8px; 
+            right: 8px; 
+            background: rgba(20, 20, 20, 0.8); 
+            color: #d4af37; 
+            border: 1px solid #d4af37; 
+            cursor: pointer; 
+            border-radius: 50%; 
+            width: 30px; 
+            height: 30px; 
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10; 
+            transition: all 0.2s ease;
+        }
+        
+        .delete-btn:hover { background: #d4af37; color: #000; transform: scale(1.1); }
+
+        /* --- ADMIN PANEL REDESIGN --- */
+        .admin-panel { 
+            margin-top: 40px; 
+            background: linear-gradient(145deg, #161625, #0a0a0f); 
+            padding: 30px; 
+            border-radius: 12px; 
+            border: 1px solid rgba(212,175,55,0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+        }
+
+        .upload-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+
+        input[type="file"] { display: none; }
+        
+        .custom-file-upload {
+            border: 1px dashed rgba(212, 175, 55, 0.5);
+            display: inline-block;
+            padding: 15px 30px;
+            cursor: pointer;
+            border-radius: 6px;
+            color: #d4af37;
             font-weight: 400;
-            border-top: 1px solid #333;
-            border-bottom: 1px solid #333;
-            padding: 20px 0;
+            transition: all 0.3s;
+            width: 100%;
+            max-width: 300px;
         }
-
-        .footer {
-            margin-top: 30px;
-            font-size: 0.9rem;
+        
+        .custom-file-upload:hover { background: rgba(212, 175, 55, 0.05); border-color: #d4af37; }
+        
+        #file-name {
+            font-size: 0.85rem;
             color: #888;
-            text-transform: uppercase;
-            letter-spacing: 3px;
+            margin-top: 8px;
+            margin-bottom: 10px;
         }
 
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(50px); }
-            to { opacity: 1; transform: translateY(0); }
+        button.primary-btn { 
+            cursor: pointer; 
+            padding: 12px 30px; 
+            background: #d4af37; 
+            border: none; 
+            color: #000; 
+            font-weight: 600; 
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: all 0.3s;
+            width: 100%;
+            max-width: 300px;
+        }
+        
+        button.primary-btn:hover { background: #b5952f; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(212,175,55,0.2); }
+
+        /* --- CUSTOM MODALS & LOADER --- */
+        #modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1000;
+            opacity: 0; visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        
+        #modal-overlay.active { opacity: 1; visibility: visible; }
+
+        .modal-box {
+            background: #161625;
+            padding: 30px;
+            border-radius: 10px;
+            border: 1px solid #d4af37;
+            text-align: center;
+            min-width: 300px;
+            max-width: 90%;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
         }
 
-        /* Адаптация за мобилни устройства */
-        @media (max-width: 480px) {
-            .envelope {
-                padding: 40px 20px;
-            }
-            h1 { font-size: 1.5rem; }
-            p { font-size: 1.1rem; }
-            .highlight { font-size: 1.25rem; }
+        .modal-box h3 { color: #d4af37; margin-bottom: 15px; font-family: 'Playfair Display', serif; }
+        .modal-box p { margin-bottom: 20px; font-size: 0.95rem; }
+        
+        .modal-box input {
+            width: 100%; padding: 10px; margin-bottom: 20px;
+            background: #0a0a0f; border: 1px solid rgba(212,175,55,0.4);
+            color: #fff; border-radius: 4px; outline: none;
+            text-align: center; letter-spacing: 2px;
+        }
+        
+        .modal-box input:focus { border-color: #d4af37; }
+        
+        .modal-actions { display: flex; gap: 10px; justify-content: center; }
+        
+        .modal-actions button {
+            padding: 8px 20px; border-radius: 4px; cursor: pointer; font-weight: 600; border: none;
+        }
+        .btn-primary { background: #d4af37; color: #000; }
+        .btn-primary:hover { background: #b5952f; }
+        .btn-secondary { background: transparent; color: #aaa; border: 1px solid #aaa !important; }
+        .btn-secondary:hover { background: rgba(255,255,255,0.05); color: #fff; }
+
+        .loader {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top: 3px solid #d4af37;
+            border-radius: 50%;
+            width: 40px; height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .hidden { display: none !important; }
+
+        /* --- TOAST NOTIFICATIONS --- */
+        #toast-container {
+            position: fixed; bottom: 20px; right: 20px; z-index: 1001;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        
+        .toast {
+            background: #161625; border-left: 4px solid #d4af37;
+            color: #fff; padding: 15px 25px; border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            font-size: 0.9rem;
+            animation: slideIn 0.3s ease forwards;
+            transition: opacity 0.3s, transform 0.3s;
+        }
+        
+        .toast.error { border-left-color: #ff4d4d; }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* --- MEDIA QUERIES (Адаптивност) --- */
+        @media (max-width: 600px) {
+            body { padding: 20px 10px; }
+            .envelope { padding: 40px 20px; }
+            h1 { font-size: 1.8rem; }
+            .highlight { font-size: 1.2rem; }
+            .gallery { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+            .photo-card img, .photo-card video { height: 140px; }
+            .admin-panel { padding: 20px; }
         }
     </style>
 </head>
 <body>
+
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <h3 id="modal-title"></h3>
+            <p id="modal-message"></p>
+            <input type="password" id="modal-input" class="hidden" />
+            <div class="loader hidden" id="modal-loader"></div>
+            <div class="modal-actions">
+                <button id="btn-cancel" class="btn-secondary hidden">Отказ</button>
+                <button id="btn-ok" class="btn-primary">Добре</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
 
     <div class="envelope">
         <h1>A message for you</h1>
         <p>
             I’m not one for long speeches, but I need you to know this: 
             <span class="highlight">"You are the exception to every rule in my life."</span>
-            Having you by my side isn't just something I appreciate; it's something I value more than anything else. Thank you for choosing to be my partner in everything. I honestly don't know what I'd do without you.
+            Having you by my side isn't just something I appreciate; it's something I value more than anything else. 
         </p>
-        <div class="footer">With Love from Krasimir!</div>
+    </div>
+
+    <div class="memories-section">
+        <h2 style="color: #d4af37;">Our Memories</h2>
+        <div class="gallery" id="gallery"></div>
+
+        <div class="admin-panel">
+            <div class="upload-wrapper">
+                <label for="fileInput" class="custom-file-upload">
+                    <i class="icon">+</i> Избери файл (Снимка/Видео)
+                </label>
+                <input type="file" id="fileInput" accept="image/*,video/*" onchange="updateFileName()">
+                <div id="file-name">Няма избран файл</div>
+            </div>
+            <button class="primary-btn" onclick="uploadMemory()">Добави в колекцията</button>
+        </div>
     </div>
 
 </body>
